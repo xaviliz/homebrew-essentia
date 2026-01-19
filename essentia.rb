@@ -10,7 +10,7 @@ class Essentia < Formula
   depends_on "eigen"
   depends_on "libyaml"
   depends_on "fftw"
-  depends_on "ffmpeg@2.8"
+  depends_on "ffmpeg@6"
   depends_on "libsamplerate"
   depends_on "libtag"
   depends_on "chromaprint"
@@ -89,3 +89,16 @@ class Essentia < Formula
     end
   end
 end
+
+'''
+Install six package via pip:
+>>> /opt/homebrew/Cellar/python@3.9/3.9.25/bin/python3.9 -m pip install six
+
+Then import essentia
+>>> /opt/homebrew/opt/python@3.9/bin/python3.9
+Python 3.9.25 (main, Oct 31 2025, 18:40:52)
+[Clang 17.0.0 (clang-1700.4.4.1)] on darwin
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import essentia
+>>> from essentia.standard import AudioLoader, MonoLoader
+'''
