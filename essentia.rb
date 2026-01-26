@@ -1,13 +1,13 @@
 class Essentia < Formula
   desc "Library for audio analysis and audio-based music information retrieval"
   homepage "http://essentia.upf.edu"
-  head 'https://github.com/MTG/essentia.git'
+  head 'https://github.com/xaviliz/essentia.git', branch: 'fix/FFmpeg-7x-compatibility'
 
   include Language::Python::Virtualenv
 
   depends_on "pkg-config" => :build
   depends_on "gcc" => :build
-  depends_on "eigen"
+  depends_on "eigen@3"
   depends_on "libyaml"
   depends_on "fftw"
   depends_on "ffmpeg@6"
@@ -16,16 +16,9 @@ class Essentia < Formula
   depends_on "chromaprint"
   depends_on "gaia" => :optional
   depends_on "tensorflow" => :optional
+  depends_on "python@3.11"
 
-  option "without-python", "Build without Python 3.9 support"
-
-  depends_on "python@3.9" if build.with? "python"
-  depends_on "numpy" if build.with? "python"
-
-  resource "six" do
-    url "https://files.pythonhosted.org/packages/21/9f/b251f7f8a76dec1d6651be194dfba8fb8d7781d10ab3987190de8391d08e/six-1.14.0.tar.gz"
-    sha256 "236bdbdce46e6e6a3d61a337c0f8b763ca1e8717c03b369e87a7ec7ce1319c0a"
-  end
+  option "without-python", "Build without Python bindings"
 
   def install
 
@@ -33,43 +26,53 @@ class Essentia < Formula
       "--mode=release",
       "--with-examples",
       "--with-vamp",
-      "--prefix=#{prefix}"
+      "--prefix=#{prefix}",
     ]
 
-    if build.with? "gaia"
-      build_flags += ["--with-gaia"]
-    end
+    build_flags += ["--with-gaia"] if build.with? "gaia"
+    build_flags += ["--with-tensorflow"] if build.with? "tensorflow"
 
-    if build.with? "tensorflow"
-      build_flags += ["--with-tensorflow"]
-    end
+    # Add explicit Eigen include path
+    ENV.append "CPPFLAGS", "-I#{Formula["eigen@3"].opt_include}/eigen3"
+    ENV.append "CXXFLAGS", "-std=gnu++17"
 
-    system Formula["python@3.9"].opt_bin/"python3", "waf", "configure", *build_flags
-    system Formula["python@3.9"].opt_bin/"python3", "waf"
-    system Formula["python@3.9"].opt_bin/"python3", "waf", "install"
-
-    python_flags = [
-      "--mode=release",
-      "--only-python",
-      "--prefix=#{prefix}"
-    ]
+    python = Formula["python@3.11"].opt_bin/"python3.11"
+    system python, "./waf", "configure", *build_flags
+    system python, "./waf"
+    system python, "./waf", "install"
 
     # Adding path to newly installed Essentia
     ENV['PKG_CONFIG_PATH'] = "#{prefix}/lib/pkgconfig:" + ENV['PKG_CONFIG_PATH']
 
-    if build.with? "python"
-      system Formula["python@3.9"].opt_bin/"python3", "waf", "configure", *python_flags
-      system Formula["python@3.9"].opt_bin/"python3", "waf"
-      system Formula["python@3.9"].opt_bin/"python3", "waf", "install"
+    return if build.without? "python"
+      
+    # Create virtual environment and install Essentia dependencies (numpy and six)
+    venv = virtualenv_create(libexec, python)
+    venv.pip_install "numpy"
+    venv.pip_install "six"
 
-      resource("six").stage do
-        system Formula["python@3.9"].opt_bin/"python3", *Language::Python.setup_install_args(libexec)
-      end
+    # Set PYTHONPATH so waf sees numpy/six
+    py_site = libexec/"lib/python#{Language::Python.major_minor_version(python)}/site-packages"
+    ENV["PYTHONPATH"] = py_site
 
-      version = Language::Python.major_minor_version Formula["python@3.9"].opt_bin/"python3"
-      site_packages = "lib/python#{version}/site-packages"
-      pth_contents = "import site; site.addsitedir('#{libexec/site_packages}')\n"
-      (prefix/site_packages/"homebrew-essentia.pth").write pth_contents
+    python_flags = [
+      "--mode=release",
+      "--only-python",
+      "--prefix=#{prefix}",
+      "--pythondir=#{libexec}/lib/python#{Language::Python.major_minor_version(python)}/site-packages"
+    ]
+
+    system python, "./waf", "configure", *python_flags
+    system python, "./waf"
+    system python, "./waf", "install"
+
+    # Make bindings discoverable automatically by Python
+    pth_file = lib/"python#{Language::Python.major_minor_version(python)}/site-packages/homebrew-essentia.pth"
+    pth_file.parent.mkpath
+    unless pth_file.exist?
+      pth_file.write <<~EOS
+        import site; site.addsitedir('#{py_site}')
+      EOS
     end
   end
 
@@ -85,20 +88,9 @@ class Essentia < Formula
     EOS
 
     if build.with? "python"
-      system Formula["python@3.9"].opt_bin/"python3", "-c", "#{py_test}"
+      python = Formula["python@3.11"].opt_bin/"python3.11"
+      system python, "-c", "#{py_test}"
     end
   end
 end
 
-'''
-Install six package via pip:
->>> /opt/homebrew/Cellar/python@3.9/3.9.25/bin/python3.9 -m pip install six
-
-Then import essentia
->>> /opt/homebrew/opt/python@3.9/bin/python3.9
-Python 3.9.25 (main, Oct 31 2025, 18:40:52)
-[Clang 17.0.0 (clang-1700.4.4.1)] on darwin
-Type "help", "copyright", "credits" or "license" for more information.
->>> import essentia
->>> from essentia.standard import AudioLoader, MonoLoader
-'''
