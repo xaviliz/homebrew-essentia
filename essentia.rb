@@ -1,7 +1,7 @@
 class Essentia < Formula
   desc "Library for audio analysis and audio-based music information retrieval"
   homepage "http://essentia.upf.edu"
-  head 'https://github.com/xaviliz/essentia.git', branch: 'fix/FFmpeg-7x-compatibility'
+  head 'https://github.com/MTG/essentia.git', branch: 'master'
 
   include Language::Python::Virtualenv
 
